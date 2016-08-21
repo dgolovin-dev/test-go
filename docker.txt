@@ -8,3 +8,5 @@ docker run --net test-go --ip "172.16.6.67" -e KAFKA_ADDR=172.16.6.66:9092 test-
 
 docker build -t test-go/endpoint endpoint/.
 docker run --net test-go --ip "172.16.6.68" -e KAFKA_ADDR=172.16.6.66:9092  test-go/endpoint
+
+curl -d "{\"amount\": 0.001, \"address\": \"3HrLaD7sdxByJiYHnjhYtwq5cDBADzU4tC\"}" http://admin:password@172.16.6.68:8000/hello

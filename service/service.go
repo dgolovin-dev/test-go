@@ -12,7 +12,12 @@ import (
 )
 
 func main() {
-	serve("localhost:9092", processor)
+	addr := os.Getenv("KAFKA_ADDR")
+	if addr == "" {
+		addr = "localhost:9092"
+	}
+	fmt.Println("kafka addr = " + addr)
+	serve(addr, processor)
 }
 
 func processor(body []byte) []byte {

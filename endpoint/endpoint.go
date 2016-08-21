@@ -14,8 +14,13 @@ import (
 )
 
 func main() {
+	addr := os.Getenv("KAFKA_ADDR")
+	if addr == "" {
+		addr = "localhost:9092"
+	}
+
 	sender := Sender{}
-	go sender.serve("localhost:9092")
+	go sender.serve(addr)
 
 	handler := endpoint(&sender)
 	handler = basicAuthDecorator(handler)

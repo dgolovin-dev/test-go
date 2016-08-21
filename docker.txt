@@ -1,7 +1,10 @@
-### kafka
-# docker run -p 2181:2181 -p 9092:9092 spotify/kafka
-# docker ps -l # for getting name
+docker network create --subnet=172.16.6.0/24 test-go
 
 export AUTO_CREATE_TOPICS="input,output"
-docker start -a suspicious_bardeen
+docker run -e --net test-go --ip "172.16.6.66" spotify/kafka
 
+docker build -t test-go/service service/.
+docker run --net test-go --ip "172.16.6.67" -e KAFKA_ADDR=172.16.6.66:9092 test-go/service
+
+docker build -t test-go/endpoint endpoint/.
+docker run --net test-go --ip "172.16.6.68" -e KAFKA_ADDR=172.16.6.66:9092  test-go/endpoint

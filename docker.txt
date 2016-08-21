@@ -1,0 +1,7 @@
+### kafka
+# docker run -p 2181:2181 -p 9092:9092 spotify/kafka
+# docker ps -l # for getting name
+
+export AUTO_CREATE_TOPICS="input,output"
+docker start -a suspicious_bardeen
+

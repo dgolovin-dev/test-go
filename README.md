@@ -12,7 +12,7 @@ after that add on host machine record in /etc/hosts:
 ```
 172.16.6.66     9cf3d4e5f23f
 ```
-last word - container id
+last word("9cf3d4e5f23f") - container id (use `docker ps -l`)
 without this record consumer may not work
 
 

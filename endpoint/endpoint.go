@@ -72,7 +72,7 @@ func mkValidationFunc(sender *Sender) http.HandlerFunc {
 		}
 
 		/* send request and receive responce */
-		fmt.Printf("send pkg %v \n", cnt)
+		fmt.Printf("send pkg %v \n", len(body))
 		res := sender.Send(body)
 
 		/* print and send response to user */

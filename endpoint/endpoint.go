@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+/*
+
+program listen 8000 port and wait user request,
+authorize request with basic auth,
+send message (request body) to kafka,
+receive validation result from kafka and send it to user
+
+*/
 func main() {
 	addr := os.Getenv("KAFKA_ADDR")
 	if addr == "" {
@@ -22,18 +30,20 @@ func main() {
 	sender := Sender{}
 	go sender.serve(addr)
 
-	handler := endpoint(&sender)
+	handler := mkValidationFunc(&sender)
 	handler = basicAuthDecorator(handler)
 	http.HandleFunc("/", handler)
 
 	go http.ListenAndServe(":8000", nil)
 	fmt.Println("listen and serve")
 
+	/* for clean exit */
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 	<-signals
 }
 
+/* decorator with basic auth */
 func basicAuthDecorator(f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
@@ -45,10 +55,12 @@ func basicAuthDecorator(f http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func endpoint(sender *Sender) http.HandlerFunc {
+/* validates request from user with kafka */
+func mkValidationFunc(sender *Sender) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
+		/* read request */
 		body := make([]byte, 128)
 		cnt, _ := r.Body.Read(body)
 		if cnt == 0 {
@@ -60,14 +72,23 @@ func endpoint(sender *Sender) http.HandlerFunc {
 		}
 		body = body[0:cnt]
 
-		fmt.Printf("sent pkg %v \n", cnt)
+		/* send request and receive responce */
+		fmt.Printf("send pkg %v \n", cnt)
 		res := sender.Send(body)
 
+		/* print and send response to user */
 		fmt.Println(string(res))
 		w.Write(res)
 	}
 }
 
+/*
+
+Sender service
+ send message to "input" kafka queue
+ read response from "output" kafka queue and return
+
+*/
 type Sender struct {
 	producer          sarama.AsyncProducer
 	consumer          sarama.Consumer
@@ -78,6 +99,7 @@ type Sender struct {
 
 func (v *Sender) serve(addr string) {
 	var err error
+	/* connection loop for kafka (if it's turned off) */
 	for v.producer == nil {
 		v.producer, err = sarama.NewAsyncProducer([]string{addr}, nil)
 		if err != nil {
@@ -86,6 +108,7 @@ func (v *Sender) serve(addr string) {
 		}
 	}
 	defer func() {
+		/* disconnect on exit */
 		if err := v.producer.Close(); err != nil {
 			log.Fatalln(err)
 		}
@@ -105,6 +128,7 @@ func (v *Sender) serve(addr string) {
 
 	v.partitionConsumer, err = v.consumer.ConsumePartition("output", 0, sarama.OffsetNewest)
 	if err != nil {
+		/* It appear when topic is not exists. No reconnection is needed. It's fatal. */
 		panic(err)
 	}
 	defer func() {
@@ -119,39 +143,57 @@ func (v *Sender) serve(addr string) {
 		v.callbacks = make(map[uuid.UUID]chan []byte)
 	}
 
+	/* catch app exit signal */
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 
+	/* callback receiving loop */
 ConsumerLoop:
 	for {
 		select {
+		/* callback msg received */
 		case msg := <-v.partitionConsumer.Messages():
 			log.Printf("Consumed message offset %d\n", msg.Offset)
-			if len(msg.Value) < 17 {
-				log.Printf("Consumed message skipped %d with len %d\n ", msg.Offset, len(msg.Value))
-			} else {
-				id, err := uuid.FromBytes(msg.Value[0:16])
-				if err != nil {
-					log.Printf("Consumed message wrong uuid" + err.Error())
-				} else {
-					v.mux.Lock()
-					cb, ok := v.callbacks[id]
-					if !ok {
-						log.Printf("Consumed message missed uuid " + id.String())
-					} else {
-						delete(v.callbacks, id)
-					}
-					v.mux.Unlock()
-					cb <- msg.Value[16:]
-
-				}
-			}
+			v.processCallbackMsg(msg.Value)
+		/* app exit */
 		case <-signals:
 			break ConsumerLoop
 		}
 	}
 }
 
+/* process callback message from output */
+func (v *Sender) processCallbackMsg(value []byte) {
+	/*
+		first 16 bytes - uuid (callback id)
+		residue - body
+	*/
+	if len(value) < 17 {
+		log.Printf("Consumed message skipped with len %d\n ", len(value))
+	} else {
+		/* extract id  */
+		id, err := uuid.FromBytes(value[0:16])
+		if err != nil {
+			log.Printf("Consumed message wrong uuid" + err.Error())
+		} else {
+			/* find callback */
+			v.mux.Lock()
+			cb, ok := v.callbacks[id]
+			if !ok {
+				log.Printf("Consumed message missed uuid " + id.String())
+			} else {
+				delete(v.callbacks, id)
+			}
+			v.mux.Unlock()
+			/* extract body of message */
+			body := value[16:]
+			/* send response to callback chan */
+			cb <- body
+		}
+	}
+}
+
+/* send msg to "input" queue and wait response from "output" queue */
 func (v *Sender) Send(body []byte) []byte {
 	id := uuid.NewV4()
 
@@ -159,6 +201,7 @@ func (v *Sender) Send(body []byte) []byte {
 	msg := sarama.ProducerMessage{Topic: "input", Value: sarama.ByteEncoder(pack)}
 	callback := make(chan []byte)
 
+	/* register callback chan */
 	v.mux.Lock()
 	v.callbacks[id] = callback
 	v.mux.Unlock()

@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"sync"
 	"time"
-	"ioutil"
+	"io/ioutil"
 )
 
 /*

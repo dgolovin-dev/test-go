@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"sync"
 	"time"
+	"ioutil"
 )
 
 /*
@@ -61,16 +62,14 @@ func mkValidationFunc(sender *Sender) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		/* read request */
-		body := make([]byte, 128)
-		cnt, _ := r.Body.Read(body)
-		if cnt == 0 {
-			fmt.Println("cann't read request")
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			fmt.Println("cann't read request " + err.Error())
 			io.WriteString(w, "false")
 			return
 		} else {
-			fmt.Printf("read pkg %v \n", cnt)
+			fmt.Printf("read pkg %v \n", len(body))
 		}
-		body = body[0:cnt]
 
 		/* send request and receive responce */
 		fmt.Printf("send pkg %v \n", cnt)
